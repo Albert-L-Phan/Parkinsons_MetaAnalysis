@@ -1,0 +1,618 @@
+---
+title: "Data simulation PD met-analysis"
+output:
+  html_document: default
+  pdf_document: default
+date made: "2023-08-28"
+date last adjusted: "2024-01-24"
+---
+
+```{r Setup, include=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyverse)
+library(simstudy)
+library(truncnorm)
+
+knitr::opts_chunk$set(echo = TRUE)
+
+##load dataset
+PD_rawdata_full <- read.table(file="~/Documents/MONASH/META-ANALYSIS PD/REPOSITORY/EXCEL2_PD_DATA.txt", sep="\t",header=T, dec = ".")
+colnames(PD_rawdata_full)
+
+##subset of pts that will use for progression question, using both groups for ON and OFF (so with doubles)
+PD_progression_wdoubles <- subset(PD_rawdata_full, Select_new_all=="Y")
+PD_progression_wdoubles2 <- subset(PD_progression_wdoubles, RQ_progression=="Y")
+PD_progression_TP_wdoubles <- subset(PD_progression_wdoubles2, Use_for_stats_TP_spreadrequired=="Y") 
+
+remove(PD_progression_wdoubles, PD_progression_wdoubles2, PD_rawdata_full)
+
+```
+
+
+```{r LINEPLOT prep // using both ON and OFF groups, include=FALSE}
+##Lineplot using ON and OFF both separately (thus there are double values in the plot)
+#First collect the means 
+PD_rawdata_plot_wdoubles <- subset(PD_progression_TP_wdoubles, select = c(ID,
+                                                      Y0_mean,
+                                                      Y0.042_M0.5_mean,
+                                                      Y0.057_mean,
+                                                      Y0.071_mean,
+                                                      Y0.083_M1_mean,
+                                                      Y0.154_mean,
+                                                      Y0.167_M2_mean,
+                                                      Y0.2_mean,
+                                                      Y0.25_M3_mean,
+                                                      Y0.33_M4_mean,
+                                                      Y0.44_mean,
+                                                      Y0.5_M6_mean,
+                                                      Y0.51_mean,
+                                                      Y0.615_mean,
+                                                      Y0.67_M8_mean,
+                                                      Y0.69_mean,
+                                                      Y0.75_M9_mean,
+                                                      Y0.81_mean,
+                                                      Y0.92_mean,
+                                                      Y1_mean,
+                                                      Y1.033_mean,
+                                                      Y1.15_mean,
+                                                      Y1.17_M14_mean,
+                                                      Y1.25_M15_mean,
+                                                      Y1.33_M16_mean,
+                                                      Y1.37_mean,
+                                                      Y1.5_M18_mean,
+                                                      Y1.56_mean,
+                                                      Y1.67_M20_mean,
+                                                      Y1.75_M21_mean,
+                                                      Y1.82_mean,
+                                                      Y1.85_mean,
+                                                      Y1.96_mean,
+                                                      Y2_mean,
+                                                      Y2.16_mean,
+                                                      Y2.25_mean,
+                                                      Y2.31_mean,
+                                                      Y2.36_mean,
+                                                      Y2.47_mean,
+                                                      Y2.5_mean,
+                                                      Y2.75_mean,
+                                                      Y2.79_mean,
+                                                      Y2.86_mean,
+                                                      Y3_mean,
+                                                      Y3.083_mean,
+                                                      Y3.1_mean,
+                                                      Y3.26_mean,
+                                                      Y3.36_mean,
+                                                      Y3.4_mean,
+                                                      Y3.5_mean,
+                                                      Y3.67_mean,
+                                                      Y3.72_mean,
+                                                      Y3.75_mean,
+                                                      Y3.86_mean,
+                                                      Y4_mean,
+                                                      Y4.18_mean,
+                                                      Y4.25_mean,
+                                                      Y4.43_mean,
+                                                      Y4.5_mean,
+                                                      Y4.6_mean,
+                                                      Y4.75_mean,
+                                                      Y5_mean,
+                                                      Y5.1_mean,
+                                                      Y5.083_mean,
+                                                      Y5.25_mean,
+                                                      Y5.3_mean,
+                                                      Y5.5_mean,
+                                                      Y5.75_mean,
+                                                      Y6_mean,
+                                                      Y6.5_mean,
+                                                      Y6.72_mean,
+                                                      Y7_mean,
+                                                      Y7.62_mean,
+                                                      Y7.72_mean,
+                                                      Y8_mean,
+                                                      Y8.5_mean,
+                                                      Y8.77_mean,
+                                                      Y9_mean,
+                                                      Y10_mean,
+                                                      Y11.17_mean,
+                                                      Y12_mean,
+                                                      Y14.72_mean,
+                                                      Y17.63_mean,
+                                                      Y20.33_mean,
+                                                     ON_OFF_calc,
+                                                     Scale_number, No, Baseline_N_pts_corr, Followed.up_N_pts)) 
+                                                    #select only the rows with actual measurements
+
+colnames(PD_rawdata_plot_wdoubles) #change colnames to more comprehensible names
+colnames(PD_rawdata_plot_wdoubles)[2] <- '0'
+colnames(PD_rawdata_plot_wdoubles)[3] <- '0.04'
+colnames(PD_rawdata_plot_wdoubles)[4] <- '0.06'
+colnames(PD_rawdata_plot_wdoubles)[5] <- '0.07'
+colnames(PD_rawdata_plot_wdoubles)[6] <- '0.08'
+colnames(PD_rawdata_plot_wdoubles)[7] <- '0.15'
+colnames(PD_rawdata_plot_wdoubles)[8] <- '0.17'
+colnames(PD_rawdata_plot_wdoubles)[9] <- '0.20'
+colnames(PD_rawdata_plot_wdoubles)[10] <- '0.25'
+colnames(PD_rawdata_plot_wdoubles)[11] <- '0.33'
+colnames(PD_rawdata_plot_wdoubles)[12] <- '0.44'
+colnames(PD_rawdata_plot_wdoubles)[13] <- '0.5'
+colnames(PD_rawdata_plot_wdoubles)[14] <- '0.51'
+colnames(PD_rawdata_plot_wdoubles)[15] <- '0.61'
+colnames(PD_rawdata_plot_wdoubles)[16] <- '0.67'
+colnames(PD_rawdata_plot_wdoubles)[17] <- '0.69'
+colnames(PD_rawdata_plot_wdoubles)[18] <- '0.75'
+colnames(PD_rawdata_plot_wdoubles)[19] <- '0.81'
+colnames(PD_rawdata_plot_wdoubles)[20] <- '0.92'
+colnames(PD_rawdata_plot_wdoubles)[21] <- '1.0'
+colnames(PD_rawdata_plot_wdoubles)[22] <- '1.03'
+colnames(PD_rawdata_plot_wdoubles)[23] <- '1.15'
+colnames(PD_rawdata_plot_wdoubles)[24] <- '1.17'
+colnames(PD_rawdata_plot_wdoubles)[25] <- '1.25'
+colnames(PD_rawdata_plot_wdoubles)[26] <- '1.33'
+colnames(PD_rawdata_plot_wdoubles)[27] <- '1.37'
+colnames(PD_rawdata_plot_wdoubles)[28] <- '1.5'
+colnames(PD_rawdata_plot_wdoubles)[29] <- '1.56'
+colnames(PD_rawdata_plot_wdoubles)[30] <- '1.67'
+colnames(PD_rawdata_plot_wdoubles)[31] <- '1.75'
+colnames(PD_rawdata_plot_wdoubles)[32] <- '1.82'
+colnames(PD_rawdata_plot_wdoubles)[33] <- '1.85'
+colnames(PD_rawdata_plot_wdoubles)[34] <- '1.96'
+colnames(PD_rawdata_plot_wdoubles)[35] <- '2.0'
+colnames(PD_rawdata_plot_wdoubles)[36] <- '2.16'
+colnames(PD_rawdata_plot_wdoubles)[37] <- '2.25'
+colnames(PD_rawdata_plot_wdoubles)[38] <- '2.31'
+colnames(PD_rawdata_plot_wdoubles)[39] <- '2.36'
+colnames(PD_rawdata_plot_wdoubles)[40] <- '2.47'
+colnames(PD_rawdata_plot_wdoubles)[41] <- '2.5'
+colnames(PD_rawdata_plot_wdoubles)[42] <- '2.75'
+colnames(PD_rawdata_plot_wdoubles)[43] <- '2.79'
+colnames(PD_rawdata_plot_wdoubles)[44] <- '2.86'
+colnames(PD_rawdata_plot_wdoubles)[45] <- '3.0'
+colnames(PD_rawdata_plot_wdoubles)[46] <- '3.08'
+colnames(PD_rawdata_plot_wdoubles)[47] <- '3.1'
+colnames(PD_rawdata_plot_wdoubles)[48] <- '3.26'
+colnames(PD_rawdata_plot_wdoubles)[49] <- '3.36'
+colnames(PD_rawdata_plot_wdoubles)[50] <- '3.4'
+colnames(PD_rawdata_plot_wdoubles)[51] <- '3.5'
+colnames(PD_rawdata_plot_wdoubles)[52] <- '3.67'
+colnames(PD_rawdata_plot_wdoubles)[53] <- '3.72'
+colnames(PD_rawdata_plot_wdoubles)[54] <- '3.75'
+colnames(PD_rawdata_plot_wdoubles)[55] <- '3.86'
+colnames(PD_rawdata_plot_wdoubles)[56] <- '4.0'
+colnames(PD_rawdata_plot_wdoubles)[57] <- '4.18'
+colnames(PD_rawdata_plot_wdoubles)[58] <- '4.25'
+colnames(PD_rawdata_plot_wdoubles)[59] <- '4.43'
+colnames(PD_rawdata_plot_wdoubles)[60] <- '4.5'
+colnames(PD_rawdata_plot_wdoubles)[61] <- '4.6'
+colnames(PD_rawdata_plot_wdoubles)[62] <- '4.75'
+colnames(PD_rawdata_plot_wdoubles)[63] <- '5.0'
+colnames(PD_rawdata_plot_wdoubles)[64] <- '5.1'
+colnames(PD_rawdata_plot_wdoubles)[65] <- '5.08'
+colnames(PD_rawdata_plot_wdoubles)[66] <- '5.25'
+colnames(PD_rawdata_plot_wdoubles)[67] <- '5.3'
+colnames(PD_rawdata_plot_wdoubles)[68] <- '5.5'
+colnames(PD_rawdata_plot_wdoubles)[69] <- '5.75'
+colnames(PD_rawdata_plot_wdoubles)[70] <- '6.0'
+colnames(PD_rawdata_plot_wdoubles)[71] <- '6.5'
+colnames(PD_rawdata_plot_wdoubles)[72] <- '6.72'
+colnames(PD_rawdata_plot_wdoubles)[73] <- '7.0'
+colnames(PD_rawdata_plot_wdoubles)[74] <- '7.62'
+colnames(PD_rawdata_plot_wdoubles)[75] <- '7.72'
+colnames(PD_rawdata_plot_wdoubles)[76] <- '8.0'
+colnames(PD_rawdata_plot_wdoubles)[77] <- '8.5'
+colnames(PD_rawdata_plot_wdoubles)[78] <- '8.77'
+colnames(PD_rawdata_plot_wdoubles)[79] <- '9'
+colnames(PD_rawdata_plot_wdoubles)[80] <- '10'
+colnames(PD_rawdata_plot_wdoubles)[81] <- '11.17'
+colnames(PD_rawdata_plot_wdoubles)[82] <- '12'
+colnames(PD_rawdata_plot_wdoubles)[83] <- '14.72'
+colnames(PD_rawdata_plot_wdoubles)[84] <- '17.63'
+colnames(PD_rawdata_plot_wdoubles)[85] <- '20.33'
+colnames(PD_rawdata_plot_wdoubles)[86] <- 'Ldopa'
+colnames(PD_rawdata_plot_wdoubles)
+
+PD_rawdata_long_wdoubles <- gather(PD_rawdata_plot_wdoubles, period, Y, '0':'20.33', factor_key=TRUE) #transform to long format for plotting 
+
+#add SD 
+PD_rawdata_SD_wdoubles <- subset(PD_progression_TP_wdoubles, select = c(ID,
+                                                      Y0_SD,
+                                                      Y0.042_SD,
+                                                      Y0.057_SD,
+                                                      Y0.071_SD,
+                                                      Y0.083_SD,
+                                                      Y0.154_SD,
+                                                      Y0.167_SD,
+                                                      Y0.2_SD,
+                                                      Y0.25_SD,
+                                                      Y0.33_SD,
+                                                      Y0.44_SD,
+                                                      Y0.5_SD,
+                                                      Y0.51_SD,
+                                                      Y0.615_SD,
+                                                      Y0.67_SD,
+                                                      Y0.69_SD,
+                                                      Y0.75_SD,
+                                                      Y0.81_SD,
+                                                      Y0.92_SD,
+                                                      Y1_SD,
+                                                      Y1.033_SD,
+                                                      Y1.15_SD,
+                                                      Y1.17_SD,
+                                                      Y1.25_SD,
+                                                      Y1.33_SD,
+                                                      Y1.37_SD,
+                                                      Y1.5_SD,
+                                                      Y1.56_SD,
+                                                      Y1.67_SD,
+                                                      Y1.75_SD,
+                                                      Y1.82_SD,
+                                                      Y1.85_SD,
+                                                      Y1.96_SD,
+                                                      Y2_SD,
+                                                      Y2.16_SD,
+                                                      Y2.25_SD,
+                                                      Y2.31_SD,
+                                                      Y2.36_SD,
+                                                      Y2.47_SD,
+                                                      Y2.5_SD,
+                                                      Y2.75_SD,
+                                                      Y2.79_SD,
+                                                      Y2.86_SD,
+                                                      Y3_SD,
+                                                      Y3.083_SD,
+                                                      Y3.1_SD,
+                                                      Y3.26_SD,
+                                                      Y3.36_SD,
+                                                      Y3.4_SD,
+                                                      Y3.5_SD,
+                                                      Y3.67_SD,
+                                                      Y3.72_SD,
+                                                      Y3.75_SD,
+                                                      Y3.86_SD,
+                                                      Y4_SD,
+                                                      Y4.18_SD,
+                                                      Y4.25_SD,
+                                                      Y4.43_SD,
+                                                      Y4.5_SD,
+                                                      Y4.6_SD,
+                                                      Y4.75_SD,
+                                                      Y5_SD,
+                                                      Y5.1_SD,
+                                                      Y5.083_SD,
+                                                      Y5.25_SD,
+                                                      Y5.3_SD,
+                                                      Y5.5_SD,
+                                                      Y5.75_SD,
+                                                      Y6_SD,
+                                                      Y6.5_SD,
+                                                      Y6.72_SD,
+                                                      Y7_SD,
+                                                      Y7.62_SD,
+                                                      Y7.72_SD,
+                                                      Y8_SD,
+                                                      Y8.5_SD,
+                                                      Y8.77_SD,
+                                                      Y9_SD,
+                                                      Y10_SD,
+                                                      Y11.17_SD,
+                                                      Y12_SD,
+                                                      Y14.72_SD,
+                                                      Y17.63_SD,
+                                                      Y20.33_SD))
+
+
+colnames(PD_rawdata_SD_wdoubles)
+colnames(PD_rawdata_plot_wdoubles)
+PD_rawdata_SD_long_wdoubles <- gather(PD_rawdata_SD_wdoubles, period, Y, 'Y0_SD':'Y20.33_SD', factor_key=TRUE) #transform to long format for plotting
+PD_rawdata_SD_long_wdoubles
+
+PD_rawdata_all <- cbind(PD_rawdata_long_wdoubles, PD_rawdata_SD_long_wdoubles)
+
+colnames(PD_rawdata_all)
+PD_rawdata_all_nodupes <- PD_rawdata_all[,-c(9:10)] #remove duplicate columns
+colnames(PD_rawdata_all_nodupes)
+colnames(PD_rawdata_all_nodupes)[7] <- "Year_Mean"
+colnames(PD_rawdata_all_nodupes)[8] <- "Mean"
+colnames(PD_rawdata_all_nodupes)[9] <- "SD"
+
+PD_rawdata_all_noNA <- na.omit(PD_rawdata_all_nodupes) #this one we need for the plotting
+remove(PD_rawdata_all_nodupes, PD_rawdata_all, PD_rawdata_plot_wdoubles, PD_rawdata_SD_long_wdoubles, PD_rawdata_SD_wdoubles)
+
+ggplot(PD_rawdata_all_noNA,aes(x=as.factor(Year_Mean),y=Mean))+
+  geom_line(aes(color=as.factor(ID),group=ID))+
+  #scale_color_manual(values = c("#e38e17", "#8e17e3")) +
+  xlab("Time (years)")+ylab("Progression") +
+  theme_bw(base_size=18) +
+  theme(axis.text.x=element_text(size=7),axis.text.y=element_text(size=10))+
+  theme(legend.position="none") #now need to remove start treatment period
+
+```
+
+
+```{r LINEPLOT prep remove the start treatment period, let them all start at 0, include=FALSE}
+
+PD_rawdata_all_noNA$Unique_ID <- paste(PD_rawdata_all_noNA$ID, PD_rawdata_all_noNA$Year_Mean, sep="_")
+PD_rawdata_all_noNA$Unique_ID
+
+PD_rawdata_all_noNA$No
+PD_rawdata_all_noNA$No <- as.numeric(as.character(PD_rawdata_all_noNA$No))
+PD_rawdata_all_noNA <- PD_rawdata_all_noNA[order(PD_rawdata_all_noNA$No),] 
+
+PD_rawdata_all_noNA$Unique_ID
+
+##now remove the first columns for the studies that started progression later, and make the later timepoints start at 0
+select.remove <- c("7_0", "7_0.08", "7_0.17",
+                      "9_0",
+                      "30_0",
+                      "50_0", "50_0.07", "50_0.20", "50_0.25",
+                      "75_A_0", "75_B_0",
+                      "98_0",
+                      "116_0",
+                      "124_0",
+                      "159_A_0", "159_B_0", "159_A_1.0", "159_B_1.0",
+                      "171_0", "171_0.17", "171_0.33",
+                      "271_0",
+                      "275_0",
+                      "289_0",
+                      "302_A_0", "302_B_0", 
+                      "375_0", "375_0.17", "375_0.44",
+                      "394_0",
+                      "445_0", "445_0.08", "445_0.25",
+                      "202_0",
+                      "30_1.17",
+                      "124_5.08",
+                      "459_A_1.15", "459_B_1.15")
+  #remove first time periods for studies with ID:
+    #7, 9, 30, 50, 75, 98, 116, 123 (not included bc no SD), 124, 159, 171, 271, 275, 289, 302, 394, 445, 202, 375
+  #remove washout for studies with ID:
+    #28 (but already excluded it appears), 30, 124, 459 
+
+df_ordered_minus_starttr <- PD_rawdata_all_noNA[!(PD_rawdata_all_noNA$Unique_ID %in% select.remove), ]
+
+##Remove the start treatment period from "period". E.g. if column 'ID'=7, we want to substract 0.33 from column 'period'
+df_ordered_minus_starttr$No <- as.factor(df_ordered_minus_starttr$No)
+df_ordered_minus_starttr$Year_Mean <- as.numeric(as.character(df_ordered_minus_starttr$Year_Mean))
+
+df_ordered_minus_starttr_newperiod <- 
+  df_ordered_minus_starttr %>% mutate(Year_Mean_new = case_when(
+    No=='7' ~ Year_Mean-0.33,
+    No=='9'  ~ Year_Mean-1,
+    No=='30'  ~ Year_Mean-0.25,
+    No=='50'  ~ Year_Mean-0.5,
+    ID=='75_A'  ~ Year_Mean-1,
+    ID=='75_B'  ~ Year_Mean-1,
+    No=='98'  ~ Year_Mean-1,
+    No=='116'  ~ Year_Mean-1,
+    No=='124'  ~ Year_Mean-0.25,
+    ID=='159_A'  ~ Year_Mean-2,
+    ID=='159_B'  ~ Year_Mean-2,
+    No=='171'  ~ Year_Mean-0.5,
+    No=='202'  ~ Year_Mean-1.0,
+    No=='271'  ~ Year_Mean-0.5,
+    No=='275'  ~ Year_Mean-0.5,
+    No=='289'  ~ Year_Mean-1,
+    ID=='302_A'  ~ Year_Mean-1.96,
+    ID=='302_B'  ~ Year_Mean-1.96,
+    No=="375" ~ Year_Mean-0.67,
+    No=='394'  ~ Year_Mean-0.44,
+    No=='445'  ~ Year_Mean-0.5))
+
+df_ordered_minus_starttr_newperiod$Year_Mean
+df_ordered_minus_starttr_newperiod$Year_Mean_new
+
+df_ordered_minus_starttr_newperiod2 <-
+  df_ordered_minus_starttr_newperiod %>% mutate(Year_Mean_final = coalesce(Year_Mean_new, Year_Mean)) #replace the NA values 
+
+df_ordered_minus_starttr_newperiod2
+colnames(df_ordered_minus_starttr_newperiod2)
+
+#remove unneccessary columns
+PD_rawdata_long_new <- df_ordered_minus_starttr_newperiod2[,-c(4,11)]
+colnames(PD_rawdata_long_new)[6] <- 'Year_original'
+colnames(PD_rawdata_long_new)[10] <- 'Year_new'
+
+remove(df_ordered_minus_starttr, 
+       df_ordered_minus_starttr_newperiod, df_ordered_minus_starttr_newperiod2,
+       PD_rawdata_all_noNA, PD_rawdata_long_wdoubles, select.remove)
+
+colnames(PD_rawdata_long_new)
+
+#correct the data for the max scale number
+PD_rawdata_long_new_corrmax <- PD_rawdata_long_new
+PD_rawdata_long_new_corrmax$Mean_corr <- (PD_rawdata_long_new$Mean / PD_rawdata_long_new$Scale_number)*100
+
+#lineplot corrected for max scale number; plot per ID  
+ggplot(PD_rawdata_long_new_corrmax,aes(x=Year_new,y=Mean_corr))+
+  geom_line(aes(color=as.factor(ID),group=ID))+
+  xlab("Time (years)")+ylab("Motor scale (% of maximum)") +
+  theme_bw(base_size=18) +
+  theme(axis.text.x=element_text(size=7),axis.text.y=element_text(size=10))+
+  theme(legend.position="none") +
+  theme(axis.text.x=element_text(size=10),axis.text.y=element_text(size=10)) + scale_x_continuous(limits=c(0, 20))
+
+```
+
+
+```{r Remove data, include=FALSE}
+remove(PD_progression_TP_wdoubles,PD_rawdata_long_new_corrmax)
+```
+
+``` {r DATA SIMULATION automated truncated normal}
+PD_rawdata_long_new$Followed.up_N_pts<-as.numeric(PD_rawdata_long_new$Followed.up_N_pts)
+
+#Change in the the baseline_N_pts column 
+PD_rawdata_long_new$Baseline_N_pts_corr #for the 2 timepoint studies, the follow-up number = the baseline number
+PD_rawdata_long_new$Baseline_N_pts #slightly different (for example 435_PARKRELDIS2019folle_wo_pRBD had 616 baseline, 363 FU but we are only looking at those 363)
+
+#Data sim Albert
+for (i in unique(PD_rawdata_long_new$ID)){
+  new_study<-PD_rawdata_long_new[PD_rawdata_long_new$ID==i,]
+  new_study$Population <- round(new_study$Baseline_N_pts_corr[1]-(new_study$Year_new/new_study$Year_new[
+    nrow(new_study)])*(new_study$Baseline_N_pts_corr[1]-new_study$Followed.up_N_pts[1]),digits=0)
+  for (k in nrow(new_study):2){new_study$Population[k]=new_study$Population[k-1]}
+  
+  df <- data.frame(rtruncnorm(new_study[1,]$Population, a=0, b=100,
+               mean=new_study[1,]$Mean, sd=new_study[1,]$SD))
+  for (j in 2:nrow(new_study)){
+    generated_data<-rtruncnorm(new_study[j,]$Population, a=0, b=100,
+               mean=new_study[j,]$Mean, sd=new_study[j,]$SD)
+    while (length(generated_data)<nrow(df)){
+      generated_data<-append(generated_data, NA)
+    }
+    
+    df<-cbind(df, generated_data)
+  }
+  colnames(df)<-paste('Y',new_study$Year_new, sep='')
+  df$id<-rownames(df)
+  df <- data.table::as.data.table(df)
+  df$Scale_number <- rep(new_study$Scale_number[1], new_study$Baseline_N_pts_corr[1])
+  df$Studyno <- rep(new_study$ID[1], new_study$Baseline_N_pts_corr[1])
+  assign(paste('Sim_',i,'_long_truncnormal', sep=''),gather(df, period, Y, colnames(df[,1:(ncol(df)-3)]), factor_key=TRUE) )
+}
+
+
+Sim_75_ON_long_truncnormal<-Sim_75_A_long_truncnormal
+Sim_75_OFF_long_truncnormal<-Sim_75_B_long_truncnormal
+Sim_268_OFF_long_truncnormal<-Sim_268_A_long_truncnormal
+Sim_268_ON_long_truncnormal<-Sim_268_B_long_truncnormal
+Sim_279_ON_long_truncnormal<-Sim_279_A_long_truncnormal
+Sim_279_OFF_long_truncnormal<-Sim_279_B_long_truncnormal
+Sim_412_ON_long_truncnormal<-Sim_412_A_long_truncnormal
+Sim_412_OFF_long_truncnormal<-Sim_412_B_long_truncnormal
+Sim_459_OFF_long_truncnormal<-Sim_459_A_long_truncnormal
+Sim_459_ON_long_truncnormal<-Sim_459_B_long_truncnormal
+Sim_443_AR_OFF_long_truncnormal<-Sim_443_A_long_truncnormal
+Sim_443_AR_ON_long_truncnormal<-Sim_443_B_long_truncnormal
+Sim_443_TD_OFF_long_truncnormal<-Sim_443_C_long_truncnormal
+Sim_443_TD_ON_long_truncnormal<-Sim_443_D_long_truncnormal
+Sim_DEC1_OFF_long_truncnormal<-Sim_DEC1_A_long_truncnormal
+Sim_DEC1_ON_long_truncnormal<-Sim_DEC1_B_long_truncnormal
+
+##Merge the dataframes
+#For those that have ON+OFF, only take the OFF 
+Bind_all_truncnormal <- rbind(Sim_7_long_truncnormal, 
+                              Sim_9_long_truncnormal, 
+                              Sim_28_long_truncnormal, 
+                              Sim_30_long_truncnormal, 
+                              Sim_39_long_truncnormal,
+                              Sim_50_long_truncnormal, 
+                              Sim_75_OFF_long_truncnormal, 
+                              Sim_98_long_truncnormal, 
+                              Sim_112_long_truncnormal,
+                              Sim_116_long_truncnormal, 
+                              Sim_122_long_truncnormal, 
+                              Sim_124_long_truncnormal, 
+                              Sim_131_long_truncnormal, 
+                              Sim_136_long_truncnormal,
+                              Sim_137_long_truncnormal, 
+                              Sim_142_long_truncnormal, 
+                              Sim_159_A_long_truncnormal, Sim_159_B_long_truncnormal,
+                              Sim_171_long_truncnormal, 
+                              Sim_201_long_truncnormal, 
+                              Sim_202_long_truncnormal, 
+                              Sim_209_A_long_truncnormal, Sim_209_B_long_truncnormal,
+                              Sim_212_long_truncnormal, 
+                              Sim_228_A_long_truncnormal, Sim_228_B_long_truncnormal, 
+                              Sim_254_long_truncnormal, 
+                              Sim_268_OFF_long_truncnormal,
+                              Sim_271_long_truncnormal, 
+                              Sim_275_long_truncnormal, 
+                              Sim_277_long_truncnormal, 
+                              Sim_279_OFF_long_truncnormal,
+                              Sim_289_long_truncnormal, 
+                              Sim_294_long_truncnormal, 
+                              Sim_302_A_long_truncnormal, Sim_302_B_long_truncnormal,
+                              Sim_305_long_truncnormal, 
+                              Sim_306_long_truncnormal, 
+                              Sim_322_A_long_truncnormal, Sim_322_B_long_truncnormal, 
+                              Sim_325_long_truncnormal,
+                              Sim_333_long_truncnormal, 
+                              Sim_371_long_truncnormal, 
+                              Sim_375_long_truncnormal, 
+                              Sim_378_long_truncnormal, 
+                              Sim_388_long_truncnormal, 
+                              Sim_394_long_truncnormal,
+                              Sim_404_long_truncnormal,
+                              Sim_407_long_truncnormal, 
+                              Sim_412_OFF_long_truncnormal, 
+                              Sim_413_long_truncnormal, 
+                              Sim_426_long_truncnormal, 
+                              Sim_433_long_truncnormal, 
+                              Sim_435_A_long_truncnormal, Sim_435_B_long_truncnormal, 
+                              Sim_443_AR_OFF_long_truncnormal, Sim_443_TD_OFF_long_truncnormal,
+                              Sim_445_long_truncnormal, 
+                              Sim_456_A_long_truncnormal,Sim_456_B_long_truncnormal, 
+                              Sim_459_OFF_long_truncnormal, 
+                              Sim_460_long_truncnormal, 
+                              Sim_461_long_truncnormal, 
+                              Sim_462_long_truncnormal,
+                              Sim_DEC1_OFF_long_truncnormal,
+                              Sim_DEC_5_long_truncnormal, 
+                              Sim_DEC_7_long_truncnormal, 
+                              Sim_DEC_8_long_truncnormal, 
+                              Sim_DEC_9_long_truncnormal) 
+
+#create a column that combines ID and study 
+Bind_all_truncnormal$Study_ID <- paste(Bind_all_truncnormal$Studyno, Bind_all_truncnormal$id, sep="_")
+
+#sort the x axis ticks and rename
+Bind_all_truncnormal$period <- as.character(Bind_all_truncnormal$period)
+Bind_all_truncnormal_new <- Bind_all_truncnormal %>% mutate(across(c('period'), substr, 2, nchar(period)))
+
+Bind_all_truncnormal_new$period <- as.numeric(Bind_all_truncnormal_new$period)
+
+table(Bind_all_truncnormal_new$period)
+
+Bind_all_truncnormal_new[Bind_all_truncnormal_new$Studyno=='75_B',]$Studyno = '75_OFF'
+Bind_all_truncnormal_new[Bind_all_truncnormal_new$Studyno=='279_B',]$Studyno = '279_OFF'
+Bind_all_truncnormal_new[Bind_all_truncnormal_new$Studyno=='412_B',]$Studyno = '412_OFF'
+Bind_all_truncnormal_new[Bind_all_truncnormal_new$Studyno=='268_A',]$Studyno = '268_OFF'
+Bind_all_truncnormal_new[Bind_all_truncnormal_new$Studyno=='459_A',]$Studyno = '459_OFF'
+Bind_all_truncnormal_new[Bind_all_truncnormal_new$Studyno=='443_A',]$Studyno = '443_AR_OFF'
+Bind_all_truncnormal_new[Bind_all_truncnormal_new$Studyno=='443_C',]$Studyno = '443_TD_OFF'
+
+#plot with all scale types together 
+ggplot(Bind_all_truncnormal_new,aes(x=period,y=Y)) +
+  geom_line(aes(color=as.factor(Studyno),group=Study_ID)) +
+  xlab("Time (years)") + ylab ("Motor scale (raw data of different scales)") +
+  theme_bw(base_size=15) + theme(axis.text.x=element_text(size=10),axis.text.y=element_text(size=12)) +theme(legend.position="none") +
+  theme(axis.text.x=element_text(size=10),axis.text.y=element_text(size=10)) + scale_x_continuous(limits=c(0, 20))
+
+```
+
+``` {r data simulation plot truncnormal distr Albert}
+Bind_all_truncnormal_new$Y_corr <- ((Bind_all_truncnormal_new$Y/Bind_all_truncnormal_new$Scale_number)*100)
+lm(formula = Y_corr ~ period, data = Bind_all_truncnormal_new)
+
+table(Bind_all_truncnormal_new$Scale_number)
+Bind_all_truncnormal_new <- Bind_all_truncnormal_new %>% mutate(Scale = case_when(Scale_number == '30' ~ "Webster",
+                                                        Scale_number == '36' ~ "Webster",
+                                                        Scale_number == '100' ~ "CURS",
+                                                        Scale_number == '108' ~ "UPDRS-III",
+                                                        Scale_number == '132' ~ "MDS-UPDRS-III"))
+
+#datasim.final.tiff <- 
+ggplot(Bind_all_truncnormal_new, aes(x=period,y=Y_corr))+
+  geom_line(aes(color=as.factor(Scale),group=Study_ID), alpha=0.25, linewidth=0.75)  +
+  xlab("Time (years)") + ylab ("Percentage of maximum motor disability") +
+  theme_bw(base_size=20) + 
+  #theme(legend.position="none")+
+  theme(axis.text.x=element_text(size=16),axis.text.y=element_text(size=16)) + scale_y_continuous(limits=c(0,100)) + 
+  scale_x_continuous(limits=c(0, 20)) +
+  stat_smooth(method='lm',color="darkslategrey") +
+  scale_color_manual(values=c('CURS'='#FFC425','Webster'='#DF536B','UPDRS-III'='#2297E6', 'MDS-UPDRS-III'='#2E8B57'), name='Scale')+
+  guides(color = guide_legend(override.aes = list(size = 8, alpha = 0.9), linetype=0))
+ 
+  
+# ggsave("datasim.final.tiff",
+# plot = datasim.final.tiff,
+# device = NULL,
+# path = NULL,
+# scale = 1,
+# width = 35,
+# height = 20,
+# units = c("cm"),
+# dpi = 300,
+# limitsize = TRUE,
+# bg = NULL)
+
+```

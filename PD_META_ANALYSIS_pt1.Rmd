@@ -1,0 +1,680 @@
+---
+title: "PD meta-analysis pt 1 : all statistical analyses but the data simulation"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+##load packages
+library(ggplot2)
+library(dplyr)
+library(tidyverse)
+library(ggsignif)
+library(meta)
+library(metafor)
+library(PRISMAstatement)
+
+```
+
+```{r PRISMA flowchart}
+##PRISMA FLOWCHART
+#jpeg(file = "prismaplot.tiff", width = 3360, height = 2880, res = 350)
+
+prisma(found = 12758,
+       found_other = 7,
+       no_dupes = 7488, 
+       screened = 7488, 
+       screen_exclusions = 7001, 
+       full_text = 487,
+       full_text_exclusions = 397, 
+       qualitative = 90, 
+       quantitative = 84,
+       width = 800, height = 800,
+       labels=list(
+         full_text_exclusions=
+           "397 records excluded. Reasons:
+       Insufficient serial scores (n = 161)
+       Unsuitable study design (n = 70)
+       Overlapping datasets (n = 57)
+       Unsuitable scale (n = 35)
+       Study duration (n = 36)
+       Number of participants (n = 16)
+       Excessive placebo effects (n = 12)
+       Unrepresentative cohort (n = 10)", 
+         screen_exclusions="7001 records excluded",
+         screened="Title/abstract screening (n = 7488)",
+         full_text="Full text screening (n = 487)",
+         quantitative = 
+           "Studies included in quantitative synthesis:
+       Calculable motor progression rate (n = 84) 
+       Suitable for meta-analysis of pooled progression rates (n = 75)
+       Included in data simulation (n = 61)")) 
+
+# #dev.off() 
+
+# ggsave("prismaplot.tiff",
+#   plot = prisma.plot,
+#   device = NULL,
+#   path = NULL,
+#   scale = 1,
+#   width = 35,
+#   height = 20,
+#   units = c("cm"),
+#   dpi = 300,
+#   limitsize = TRUE,
+#   bg = NULL)
+
+
+```
+
+```{r loading dataset, converting data types, making subsets}
+PD_dataset <- read.table(file="~/Documents/MONASH/META-ANALYSIS PD/REPOSITORY/EXCEL1_PD_DATA_FINAL.txt", sep="\t",header=T, dec = ".")
+
+colnames(PD_dataset)
+
+PD_dataset$No <- as.factor(PD_dataset$No)
+PD_dataset$File_identifier <- as.factor(PD_dataset$File_identifier)
+PD_dataset$Select_PKmethod <- as.factor(PD_dataset$Select_PKmethod)
+PD_dataset$Study_type <- as.factor(PD_dataset$Study_type)
+PD_dataset$Ni_Nf_equal <- as.factor(PD_dataset$Ni_Nf_equal)
+PD_dataset$Ni_higher_than_Nf <- as.factor(PD_dataset$Ni_higher_than_Nf)
+PD_dataset$ON_OFF <- as.factor(PD_dataset$ON_OFF)
+PD_dataset$ON_OFF_calc <- as.factor(PD_dataset$ON_OFF_calc)
+PD_dataset$PK_DOPA <- as.factor(PD_dataset$PK_DOPA)
+PD_dataset$Sequential_start <- as.factor(PD_dataset$Sequential_start)
+PD_dataset$Start_Levodopa_together <- as.factor(PD_dataset$Start_Levodopa_together)
+PD_dataset$RQ_progression <- as.factor(PD_dataset$RQ_progression)
+PD_dataset$RQ_start_tr <- as.factor(PD_dataset$RQ_start_tr)
+PD_dataset$RQ_prodromal <- as.factor(PD_dataset$RQ_prodromal)
+PD_dataset$RQ_untreated_progression <- as.factor(PD_dataset$RQ_untreated_progression)
+PD_dataset$Baseline_N_pts_NON_intervention <- as.numeric(as.character(PD_dataset$Baseline_N_pts_NON_intervention))
+PD_dataset$Followed.up_N_pts_NON_intervention <- as.numeric(as.character(PD_dataset$Followed.up_N_pts_NON_intervention))
+PD_dataset$Mean_change_pa_perc <- as.numeric(as.character(PD_dataset$Mean_change_pa_perc))
+PD_dataset$SD_change_cochrane_formula <- as.numeric(PD_dataset$SD_change_cochrane_formula)
+PD_dataset$Scale_number <- as.numeric(as.character(PD_dataset$Scale_number))
+
+#create variance column
+PD_dataset$Variance<-(PD_dataset$SD_change_cochrane_formula)^2
+PD_dataset$Variance_annualized<-PD_dataset$Variance/PD_dataset$Yrs_between
+PD_dataset$Variance_pa_perc<-PD_dataset$Variance_annualized * (100/PD_dataset$Scale_number)
+
+PD_dataset$SE_change_pa_perc <- as.numeric(as.character(PD_dataset$SE_change_pa_perc))
+PD_dataset$Baseline_disdur_yrs <- as.numeric(as.character(PD_dataset$Baseline_disdur_yrs))
+PD_dataset$Baseline_disdur_yrs
+
+PD_dataset$Study_dur_yrs <- as.numeric(as.character(PD_dataset$Study_dur_yrs))
+PD_dataset$Data_points_N <- as.numeric(as.character(PD_dataset$Data_points_N))
+PD_dataset$Decimals_disability_improvement <- as.numeric(as.character(PD_dataset$Decimals_disability_improvement))
+PD_dataset$Percentage_disability_improvement <- as.numeric(as.character(PD_dataset$Percentage_disability_improvement))
+PD_dataset$Time_to_max_disability_improvement_yrs <- as.numeric(as.character(PD_dataset$Time_to_max_disability_improvement_yrs))
+PD_dataset$Scale <- as.factor(PD_dataset$Scale)
+PD_dataset$Scale_number <- as.factor(PD_dataset$Scale_number)
+PD_dataset$Bias_CASP <- as.factor(PD_dataset$Bias_CASP)
+
+## Exclude doubles for analysis (PK method)
+PD_dataset_nodoubles <- subset(PD_dataset, Select_PKmethod=="Y")
+  #91 entries from 90 studies (228_JINS is in twice; 2 subgroups)
+
+## Make subsets based on the research questions
+PD_progression <- subset(PD_dataset_nodoubles, RQ_progression=="Y") 
+  #85 entries from 84 studies
+
+PD_prodromal <- subset(PD_dataset_nodoubles, RQ_prodromal=="Y") #4 study entries from 4 studies
+PD_start_tr <- subset(PD_dataset_nodoubles, RQ_start_tr=="Y") #16 entries from 16 studies
+
+remove(PD_prodromal)
+
+```
+
+```{r PK table and text}
+## Summary statistics on progression and demographics in the cohort that we will use for progression rate
+# Progression
+shapiro.test(PD_progression$Disability_progr_pa_perc) #P < 0.05 so not normally distributed
+hist(PD_progression$Disability_progr_pa_perc, col='steelblue', main='Non-normal')
+summary(PD_progression$Disability_progr_pa_perc) 
+aggregate(Disability_progr_pa_perc ~ 1, PD_progression, function(x) c(median = median(x), IQR = IQR(x))) 
+aggregate(Disability_progr_pa_perc ~ 1, PD_progression, function(x) c(mean = mean(x), sd = sd(x))) #dont use sd bc not normal
+
+# Estimation of patient years of PD progression
+est_ptyrs <- PD_progression$Baseline_N_pts_NON_intervention * PD_progression$Study_dur_yrs
+sum(est_ptyrs)
+remove(est_ptyrs)
+
+# Age
+shapiro.test(PD_progression$Baseline_age_yrs) #P > 0.05 so normally distributed
+hist(PD_progression$Baseline_age_yrs, col='steelblue', main='Normal')
+aggregate(Baseline_age_yrs ~ 1, PD_progression, function(x) c(mean = mean(x), sd = sd(x))) 
+aggregate(Baseline_age_yrs ~ 1, PD_progression, function(x) c(mean = median(x), IQR = IQR(x))) 
+
+# Disease duration
+shapiro.test(PD_progression$Baseline_disdur_yrs) #P < 0.05 so not normally distributed
+hist(PD_progression$Baseline_disdur_yrs, col='steelblue', main='Normal')
+aggregate(Baseline_disdur_yrs ~ 1, PD_progression, function(x) c(mean = mean(x), sd = sd(x))) 
+aggregate(Baseline_disdur_yrs ~ 1, PD_progression, function(x) c(median = median(x), IQR = IQR(x))) 
+
+# Study duration
+shapiro.test(PD_progression$Study_dur_yrs) #P < 0.05 so not normally distributed
+hist(PD_progression$Study_dur_yrs, col='steelblue', main='Normal')
+aggregate(Study_dur_yrs ~ 1, PD_progression, function(x) c(mean = mean(x), sd = sd(x))) 
+aggregate(Study_dur_yrs ~ 1, PD_progression, function(x) c(median = median(x), IQR = IQR(x))) 
+
+# Sample size
+shapiro.test(PD_progression$Baseline_N_pts_NON_intervention) #P < 0.05 so not normally distributed
+hist(PD_progression$Baseline_N_pts_NON_intervention, col='steelblue', main='Normal')
+aggregate(Baseline_N_pts_NON_intervention ~ 1, PD_progression, function(x) c(mean = mean(x), sd = sd(x))) 
+aggregate(Baseline_N_pts_NON_intervention ~ 1, PD_progression, function(x) c(median = median(x), IQR = IQR(x))) 
+
+# Scale types
+table(PD_progression$Scale)
+
+
+## TEXT (full dataset)
+PD_dataset_nosubgroups <- subset(PD_dataset, Select_PKmethod!='N_subgroup')
+#this is the full dataset only excluding the subgroups
+PD_dataset_nosubgroups <- subset(PD_dataset_nosubgroups, Select_PKmethod!="N_subgroup_average")
+
+table(PD_dataset_nosubgroups$ON_OFF_calc) #this is the dataset with ALL pts, incl the prodromal and the start treatment only.
+#Start_tr = 1
+#Prodromal = 4
+#Average_ON_OFF = 10 (9 defined off and testdose, 1 that reported on both ON and OFF)
+#Def_OFF = 9
+#ON_testdose = 9
+#OFF = 12 (one more than in PD_progression$ON_OFF, namely 47_ARCHNEU, bc for this one we use average in PD_progression subset)
+#ON = 14 (one is double bc two ON groups, namely 228_JINS)
+#Prev = 45 (Rinne only commence tr is also counted)
+#Untr = 8
+
+aggregate(Disability_progr_pa_perc ~ ON_OFF_calc, PD_dataset_nosubgroups, function(x) c(mean = mean(x), sd = sd(x)))
+aggregate(Disability_progr_pa_perc ~ ON_OFF_calc, PD_dataset_nosubgroups, function(x) c(median = median(x), IQR = IQR(x)))
+
+#make subset of only the studies with On and Off testdose
+Def_OFF_testdose_subset <- subset(PD_dataset_nosubgroups, ON_OFF=="Defined_OFF_plus_testdose") 
+
+def_OFF <- subset(Def_OFF_testdose_subset, ON_OFF_calc=="Def_OFF")
+def_ON <- subset(Def_OFF_testdose_subset, ON_OFF_calc=="ON_testdose")
+
+aggregate(Disability_progr_pa_perc ~ 1, def_OFF, function(x) c(mean = mean(x), sd = sd(x)))
+aggregate(Disability_progr_pa_perc ~ 1, def_ON, function(x) c(mean = mean(x), sd = sd(x)))
+
+aggregate(Disability_progr_pa_perc ~ 1, def_OFF, function(x) c(median = median(x), IQR = IQR(x)))
+aggregate(Disability_progr_pa_perc ~ 1, def_ON, function(x) c(median = median(x), IQR = IQR(x)))
+
+wilcox.test(Disability_progr_pa_perc ~ ON_OFF_calc, data=Def_OFF_testdose_subset, paired=TRUE) #P=0.05
+
+#make subset of the untreated studies 
+Untr_subset <- subset(PD_dataset_nosubgroups, ON_OFF=="untreated")
+colnames(Untr_subset)
+aggregate(Baseline_disdur_yrs ~ 1, Untr_subset, function(x) c(mean = mean(x), sd = sd(x)))
+aggregate(Study_dur_yrs ~ 1, Untr_subset, function(x) c(mean = mean(x), sd = sd(x)))
+aggregate(Disability_progr_pa_perc ~ 1, Untr_subset, function(x) c(mean = mean(x), sd = sd(x)))
+summary(Untr_subset$Baseline_N_pts_NON_intervention)
+sum(Untr_subset$Baseline_N_pts_NON_intervention)
+
+
+## TABLE 1
+# Prev vs defined motor state, minus the untreated
+table(PD_progression$ON_OFF_calc) #this is the dataset with only studies that are used for progression 
+
+aggregate(Disability_progr_pa_perc ~ ON_OFF_calc, PD_progression, function(x) c(mean = mean(x), sd = sd(x)))
+aggregate(Disability_progr_pa_perc ~ ON_OFF_calc, PD_progression, function(x) c(median = median(x), IQR = IQR(x)))
+
+PD_progression_nountr <- subset(PD_progression, ON_OFF_calc!="untreated") #85 => 77
+PD_progression_nountr$ON_OFF_calc
+PD_progression_nountr$Prev_vs_other <- PD_progression_nountr$ON_OFF_calc
+PD_progression_nountr$Prev_vs_other
+PD_progression_nountr$Prev_vs_other <- gsub("Average_ON_OFF", "Other", PD_progression_nountr$Prev_vs_other) 
+PD_progression_nountr$Prev_vs_other <- gsub("ON", "Other", PD_progression_nountr$Prev_vs_other) 
+PD_progression_nountr$Prev_vs_other <- gsub("OFF", "Other", PD_progression_nountr$Prev_vs_other) 
+PD_progression_nountr$Prev_vs_other <- gsub("untreated", "Other", PD_progression_nountr$Prev_vs_other) 
+PD_progression_nountr$Prev_vs_other
+
+table(PD_progression_nountr$Prev_vs_other)
+
+aggregate(Disability_progr_pa_perc ~ Prev_vs_other, PD_progression_nountr, function(x) c(mean = mean(x), sd = sd(x)))
+aggregate(Disability_progr_pa_perc ~ Prev_vs_other, PD_progression_nountr, function(x) c(median = median(x), IQR = IQR(x)))
+
+wilcox.test(Disability_progr_pa_perc ~ Prev_vs_other, data=PD_progression_nountr) 
+
+# Untreated motor disability vs all treated
+PD_progression$Untr_vs_other <- PD_progression$ON_OFF_calc
+PD_progression$Untr_vs_other
+PD_progression$Untr_vs_other <- gsub("Average_ON_OFF", "Other", PD_progression$Untr_vs_other) 
+PD_progression$Untr_vs_other <- gsub("ON", "Other", PD_progression$Untr_vs_other) 
+PD_progression$Untr_vs_other <- gsub("OFF", "Other", PD_progression$Untr_vs_other) 
+PD_progression$Untr_vs_other <- gsub("prev", "Other", PD_progression$Untr_vs_other) 
+PD_progression$Untr_vs_other
+
+table(PD_progression$Untr_vs_other)
+
+aggregate(Disability_progr_pa_perc ~ Untr_vs_other, PD_progression, function(x) c(mean = mean(x), sd = sd(x)))
+aggregate(Disability_progr_pa_perc ~ Untr_vs_other, PD_progression, function(x) c(median = median(x), IQR = IQR(x)))
+
+wilcox.test(Disability_progr_pa_perc ~ Untr_vs_other, data=PD_progression)
+
+ggplot(PD_progression, aes(x=Untr_vs_other, y=Disability_progr_pa_perc)) + 
+  geom_boxplot(color="black",outlier.size=-1, width=0.5) + geom_jitter(aes(color=ON_OFF),width = 0.1) + 
+  labs(x=NULL, y="Disability progression (% p.a.)") + 
+  scale_color_manual(values=c('untreated'='dodgerblue','Other'='gray')) +
+  theme_bw(base_size=18) + theme(legend.title=element_blank()) +
+  geom_signif(y_position=c(9.5), xmin=c(1), xmax=c(2), annotation=c("*"), tip_length=0.02) +
+  ggtitle('Disability progression treated vs. untreated')
+
+# Sample size: initial = final sample vs initial > final
+table(PD_progression$Ni_Nf_equal)
+
+aggregate(Disability_progr_pa_perc ~ Ni_Nf_equal, PD_progression, function(x) c(mean = mean(x), sd = sd(x)))
+aggregate(Disability_progr_pa_perc ~ Ni_Nf_equal, PD_progression, function(x) c(median = median(x), IQR = IQR(x)))
+
+wilcox.test(Disability_progr_pa_perc ~ Ni_Nf_equal, data=PD_progression) 
+
+# Baseline disease duration < vs >= median (= 3 yrs)
+library(dplyr)
+aggregate(Baseline_disdur_yrs ~ 1, PD_progression, function(x) c(mean = mean(x), sd = sd(x)))
+
+PD_progression <- PD_progression %>% mutate(Baseline_disdur_cat =
+                                              case_when(Baseline_disdur_yrs < 3 ~ "Short",
+                                                        Baseline_disdur_yrs >= 3 ~ "Long"))
+PD_progression$Baseline_disdur_cat <- as.factor(PD_progression$Baseline_disdur_cat)
+summary(PD_progression$Baseline_disdur_cat)
+
+aggregate(Disability_progr_pa_perc ~ Baseline_disdur_cat, PD_progression, function(x) c(mean = mean(x), sd = sd(x)))
+aggregate(Disability_progr_pa_perc ~ Baseline_disdur_cat, PD_progression, function(x) c(median = median(x), IQR = IQR(x)))
+
+wilcox.test(Disability_progr_pa_perc ~ Baseline_disdur_cat, data=PD_progression) 
+
+ggplot(PD_progression, aes(x=Baseline_disdur_cat, y=Disability_progr_pa_perc)) + 
+  geom_boxplot(color="black",outlier.size=-1, width=0.5) + geom_jitter(aes(color=ON_OFF),width = 0.1) + 
+  labs(x=NULL, y="Disability progression (% p.a.)") + 
+  scale_color_manual(values=c('prev'='gold','untreated'='dodgerblue','ON'='Dark Orchid','OFF'='slategray2', 'Average_ON_OFF'='darkgreen')) +
+  theme_bw(base_size=18) + theme(legend.title=element_blank()) +
+  geom_signif(y_position=c(9.5), xmin=c(1), xmax=c(2), annotation=c("*"), tip_length=0.02) +
+  ggtitle('Disability progression in function of disease duration')
+
+# Baseline age < vs > median (= 64 yrs) 
+library(dplyr)
+PD_progression <- PD_progression %>% mutate(Baseline_age_yrs_cat =
+                                              case_when(Baseline_age_yrs < 64 ~ "Young",
+                                                        Baseline_age_yrs >= 64 ~ "Old"))
+PD_progression$Baseline_age_yrs_cat <- as.factor(PD_progression$Baseline_age_yrs_cat)
+summary(PD_progression$Baseline_age_yrs_cat)
+
+aggregate(Disability_progr_pa_perc ~ Baseline_age_yrs_cat, PD_progression, function(x) c(mean = mean(x), sd = sd(x)))
+aggregate(Disability_progr_pa_perc ~ Baseline_age_yrs_cat, PD_progression, function(x) c(median = median(x), IQR = IQR(x)))
+
+wilcox.test(Disability_progr_pa_perc ~ Baseline_age_yrs_cat, data=PD_progression) 
+
+# Sequential start treatment in >25% vs others treated 
+PD_progression$Sequential_start
+summary(PD_progression$Sequential_start)
+
+#remove the untreated 
+subset_sequentialstart <- subset(PD_progression, ON_OFF!="untreated") 
+
+#Put the < 25% sequential start and the ones without sequential start together 
+subset_sequentialstart$Sequential_start <- gsub("<25%_start", "Other", subset_sequentialstart$Sequential_start) 
+subset_sequentialstart$Sequential_start <- gsub("N", "Other", subset_sequentialstart$Sequential_start) 
+subset_sequentialstart$Sequential_start <- as.factor(subset_sequentialstart$Sequential_start)
+table(subset_sequentialstart$Sequential_start)
+
+aggregate(Disability_progr_pa_perc ~ Sequential_start, subset_sequentialstart, function(x) c(mean = mean(x), sd = sd(x)))
+aggregate(Disability_progr_pa_perc ~ Sequential_start, subset_sequentialstart, function(x) c(median = median(x), IQR = IQR(x)))
+
+wilcox.test(Disability_progr_pa_perc ~ Sequential_start, data=subset_sequentialstart) 
+
+# Clinical trial vs cohort study 
+PD_progression$Study_type
+summary(PD_progression$Study_type) 
+
+aggregate(Disability_progr_pa_perc ~ Study_type, PD_progression, function(x) c(mean = mean(x), sd = sd(x)))
+aggregate(Disability_progr_pa_perc ~ Study_type, PD_progression, function(x) c(median = median(x), IQR = IQR(x)))
+
+wilcox.test(Disability_progr_pa_perc ~ Study_type, data=PD_progression) 
+
+PD_progression_onlytreated <- subset(PD_progression, ON_OFF!="untreated") 
+wilcox.test(Disability_progr_pa_perc ~ Study_type, data=PD_progression_onlytreated) 
+aggregate(Disability_progr_pa_perc ~ Study_type, PD_progression_onlytreated, function(x) c(mean = mean(x), sd = sd(x)))
+
+# Baseline sample size <80 vs >=80
+PD_progression <- PD_progression %>% mutate(Baseline_samplesize_cat =
+                                              case_when(Baseline_N_pts_NON_intervention < 80 ~ "Less_80",
+                                                        Baseline_N_pts_NON_intervention >= 80 ~ "More_80"))
+PD_progression$Baseline_samplesize_cat <- as.factor(PD_progression$Baseline_samplesize_cat)
+summary(PD_progression$Baseline_samplesize_cat)
+
+aggregate(Disability_progr_pa_perc ~ Baseline_samplesize_cat, PD_progression, function(x) c(mean = mean(x), sd = sd(x)))
+aggregate(Disability_progr_pa_perc ~ Baseline_samplesize_cat, PD_progression, function(x) c(median = median(x), IQR = IQR(x)))
+
+wilcox.test(Disability_progr_pa_perc ~ Baseline_samplesize_cat, data=PD_progression) 
+
+# Observation period <3 vs >3yrs 
+PD_progression$Study_dur_yrs
+PD_progression <- PD_progression %>% mutate(Study_dur_cat =
+                                              case_when(Study_dur_yrs <= 3 ~ "Less_3",
+                                                        Study_dur_yrs > 3 ~ "More_3"))
+PD_progression$Study_dur_cat <- as.factor(PD_progression$Study_dur_cat)
+summary(PD_progression$Study_dur_cat)  
+
+aggregate(Disability_progr_pa_perc ~ Study_dur_cat, PD_progression, function(x) c(mean = mean(x), sd = sd(x)))
+aggregate(Disability_progr_pa_perc ~ Study_dur_cat, PD_progression, function(x) c(median = median(x), IQR = IQR(x)))
+
+wilcox.test(Disability_progr_pa_perc ~ Study_dur_cat, data=PD_progression) 
+
+# Pcorr 
+p.adjust(c(0.05, 0.007, 0.26, 0.003, 0.00035, 0.43, 0.93, 0.59),method ="BH")
+
+
+## ADDITIONAL ANALYSES 
+# START LDOPA
+table(PD_start_tr$PK_DOPA) # 16 studies start specific timepoint
+summary(PD_start_tr$Time_to_max_disability_improvement_yrs) 
+PD_start_tr$Study_dur_yrs
+
+shapiro.test(PD_start_tr$Percentage_disability_improvement) 
+hist(PD_start_tr$Percentage_disability_improvement)
+shapiro.test(PD_start_tr$Time_to_max_disability_improvement_yrs)
+hist(PD_start_tr$Time_to_max_disability_improvement_yrs)
+
+aggregate(Percentage_disability_improvement ~ 1, PD_start_tr, function(x) c(mean = mean(x), sd = sd(x)))
+aggregate(Time_to_max_disability_improvement_yrs ~ 1, PD_start_tr, function(x) c(mean = mean(x), sd = sd(x)))
+
+```
+
+```{r correct bias study size, study duration, no timepoints}
+
+#N patients 
+  mean(PD_progression$Disability_progr_pa_perc)
+  x <- PD_progression$Disability_progr_pa_perc 
+  sum(PD_progression$Baseline_N_pts_NON_intervention) 
+  wt <- (PD_progression$Baseline_N_pts_NON_intervention)/12938 
+  weighted.mean(x, wt)
+  remove(wt)
+  
+#Study duration 
+  sum(PD_progression$Study_dur_yrs) 
+  wt <- (PD_progression$Study_dur_yrs)/2864338  
+  weighted.mean(x, wt) 
+  remove(wt)
+ 
+#No of timepoints  
+  sum(PD_progression$Data_points_actually_used_for_progr) 
+  wt <- (PD_progression$Study_dur_yrs)/322.8 
+  weighted.mean(x, wt)
+  remove(wt, x)
+
+```
+
+```{r meta-analysis Ayla RANDOM EFFECTS MODEL}
+
+## META-ANALYSIS POOLING EFFECT SIZES IN RANDOM EFFECTS MODEL 
+library(meta)
+
+## Exclude doubles for analysis for my method
+PD_dataset_nodoubles_AP <- subset(PD_dataset, Select_APmethod_FINAL=="Y")
+PD_progression_AP <- subset(PD_dataset_nodoubles_AP, RQ_progression=="Y") #84 study entries from 83 studies (#228_JINS is in twice)
+
+#pool the effect sizes + check heterogeneity
+PD_progression_AP$Mean_change_pa_perc_FINAL <- as.numeric(as.character(PD_progression_AP$Mean_change_pa_perc_FINAL))
+summary(PD_progression_AP$Mean_change_pa_perc_FINAL) #8 NAs, so we have data for 75 studies (< 76 entries)
+
+#remove the ones with no effect size
+PD_progression_metaan <- subset(PD_progression_AP, Mean_change_pa_perc_FINAL!='NA') #76 entries from 75 studies
+
+PD_progression_metaan$Mean_change_pa_perc_FINAL
+PD_progression_metaan$SE_change_pa_perc
+PD_progression_metaan$File_identifier2
+
+#identify the untreated 
+subset_untr <- subset(PD_progression_metaan, ON_OFF_calc=="untreated")
+subset_untr_all <- subset(PD_dataset, ON_OFF_calc=="untreated")
+remove(subset_untr, subset_untr_all)
+
+#change the identifiers 
+PD_progression_metaan$File_identifier2 <- gsub("Myllyla_A", "Myllylä 1995", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Dupont", "Dupont 1996", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Suzuki", "Suzuki 2013", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("PSG_A", "Simuni (PSG) 2020", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Olanow", "Olanow 1995", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Schreiner", "Schreiner 2019", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Holloway", "Holloway 2004", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Cilia", "Cilia 2020", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Garciaruiz", "García Ruiz 2004", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Helmy", "Helmy 2022", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Reinoso", "Reinoso 2014", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Carvalho", "Carvalho 2023", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Larsen", "Larsen 1999", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Allain", "Allain 2000", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Ou", "Ou 2021", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Lubomski", "Lubomski 2022", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Ayala", "Ayala 2017", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Deng", "Deng 2019", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Ludin", "Ludin 1976", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Gago", "Gago 2009", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Antonini", "Antonini 2012", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Lenfeldt", "Lenfeldt 2013", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Lewis", "Lewis 2020", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Palermo", "Palermo 2021", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Sleeman", "Sleeman 2017", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Santosgarcia", "García 2022", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Muslimovic_A", "Muslimović 2009 (new onset)", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Muslimovic_B", "Muslimović 2009 (established)", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Holden", "Holden 2018", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Pirker", "Pirker 2003", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Kraus", "Kraus 2005", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Oertel", "Oertel 2006", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Schrag", "Schrag 2005", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Zangaglia", "Zangaglia 2009", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Lopez", "Lopez 2010", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Ravina", "Ravina 2012", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Ding", "Ding 2016", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Li", "Li 2018", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Mollenhauer", "Mollenhauer 2019", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Ryu", "Ryu 2022", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Imarisio", "Imarisio 2022", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Yu", "Yu 2019", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Palhagen_A", "Pålhagen 1998*", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Alves", "Alves 2005", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Velseboer", "Velseboer 2013", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Frazzita", "Frazzita 2012", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("PSG_C", "Shoulson (PSG) 1989*", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Rascol", "Rascol 2000", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("PSG_D", "Fahn (PSG) 2004*", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Santaella", "Santaella 2020", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Osuilleabhain", "O'suilleabhain 2005", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Vogt", "Vogt 2011", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Merola", "Merola 2016", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Moccia", "Moccia 2016", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Pilotto", "Pilotto 2021", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Ng", "Ng 2015", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Eggers", "Eggers 2012", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Palhagen_B", "Pålhagen 2007", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("NINDS", "Simuni (NINDS) 2015", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Fu", "Fu 2022", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Athauda_A", "Athauda 2017", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Schenkman", "Schenkman 2018", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Myllyla_B", "Myllylä 1992*", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Athauda_B", "Athauda 2022", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Folle", "Folle 2019", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Katzenschlager", "Katzenschlager 2008", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Alives-Olmos", "Aviles-Olmos 2013", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Davis", "Davis 2016", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Shoulson", "Shoulson 2007", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Maple-Grodem", "Maple-Grødem 2021", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Chan", "Chan 2023", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Ritz", "Ritz 2012", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Pagano", "Pagano 2017*", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Devos", "Devos 2022*", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Lang", "Lang 2022*", PD_progression_metaan$File_identifier2) 
+PD_progression_metaan$File_identifier2 <- gsub("Melzer", "Melzer 2015", PD_progression_metaan$File_identifier2) 
+
+m.gen <- metagen(TE=Mean_change_pa_perc_FINAL,
+        seTE=SE_change_pa_perc,
+        studlab=File_identifier2,
+        data=PD_progression_metaan,
+        fixed=FALSE,
+        random=TRUE,
+        prediction=TRUE) 
+summary(m.gen) #very high heterogeneity
+
+#tiff(file = "forestplot.final.tiff", width = 3360, height = 2880, res = 600)
+
+forest.meta(m.gen,
+            sortvar=TE,
+            prediction=FALSE,
+            print.tau2=FALSE,
+            comb.fixed=FALSE,
+            squaresize=0.8,
+            weight.study="same",
+            col.inside="black",
+            rightlabs=c('Effect size', 'SE', '95% CI', 'Weight'),
+            leftcols=c('studlab'),
+            rightcols=c('effect', 'seTE', 'ci', 'w.random'),
+            xlim=c(-2.5,10),
+            leftlabs=c("Study", "g", "SE"),
+            fontsize=5.2,
+            spacing=.32)
+
+#dev.off()
+
+```
+
+
+```{r meta-analysis: METAREGRESSION to test for heterogeneity, based on lab meeting 4 Oct 2023, using rma.mv}
+
+#Test whether is of influence: scale type, study duration, number of patients, study design, motor state in rel to treatment, baseline age, disease duration, bias assessment, treatment (yes/no)
+  PD_progression_metaan$Scale
+  PD_progression_metaan$Study_dur_yrs
+  PD_progression_metaan$Baseline_N_pts_NON_intervention
+  PD_progression_metaan$Study_type
+  PD_progression_metaan$ON_OFF_calc
+  PD_progression_metaan$Baseline_age_yrs
+  PD_progression_metaan$Baseline_disdur_yrs
+  PD_progression_metaan$Bias 
+  PD_progression_metaan$Variance_pa_perc
+
+#Moderator = motor scale type (factor)
+metareg0 <- rma.mv(Mean_change_pa_perc, Variance_pa_perc,
+                   data=PD_progression_metaan,
+                   random = ~1 | File_identifier,
+                   mods = ~ Scale,
+                   method="REML")
+metareg0 
+
+#Moderator = Study duration (factor)
+metareg1 <- rma.mv(Mean_change_pa_perc,
+                   Variance_pa_perc,
+                   data = PD_progression_metaan,
+                   random = ~1 | File_identifier,
+                   mods = ~ Study_dur_yrs,
+                   method="REML")
+metareg1 
+
+#Moderator = Baseline patient number (continuous)
+metareg2 <- rma.mv(Mean_change_pa_perc, Variance_pa_perc,
+                   data=PD_progression_metaan,
+                   random = ~1 | File_identifier,
+                   mods = ~ Baseline_N_pts_NON_intervention,
+                   method="REML")
+metareg2
+
+#Moderator = Levodopa treatment Y/N
+PD_progression_metaan$ON_OFF_calc #convert variable into treated Y/N
+
+PD_progression_metaan$Untr_vs_other <- PD_progression_metaan$ON_OFF_calc
+PD_progression_metaan$Untr_vs_other
+PD_progression_metaan$Untr_vs_other <- gsub("Average_ON_OFF", "Other", PD_progression_metaan$Untr_vs_other) 
+PD_progression_metaan$Untr_vs_other <- gsub("ON", "Other", PD_progression_metaan$Untr_vs_other) 
+PD_progression_metaan$Untr_vs_other <- gsub("OFF", "Other", PD_progression_metaan$Untr_vs_other) 
+PD_progression_metaan$Untr_vs_other <- gsub("prev", "Other", PD_progression_metaan$Untr_vs_other) 
+PD_progression_metaan$Untr_vs_other <- as.factor(PD_progression_metaan$Untr_vs_other)
+table(PD_progression_metaan$Untr_vs_other)
+
+metareg3 <- rma.mv(Mean_change_pa_perc, Variance_pa_perc,
+                   data=PD_progression_metaan,
+                   random = ~1 | File_identifier,
+                   mods = ~ Untr_vs_other,
+                   method="REML")
+metareg3
+
+regplot(metareg3, mod=2) 
+
+#Moderator = study type (factor)
+metareg4 <- rma.mv(Mean_change_pa_perc, Variance_pa_perc,
+                   data=PD_progression_metaan,
+                   random = ~1 | File_identifier,
+                   mods = ~ as.factor(Study_type),
+                   method="REML")
+metareg4
+
+#Moderator = Motor status in relation to treatment: do this analysis only on untreated
+PD_progression_metaan_onlytreated <- subset(PD_progression_metaan, ON_OFF_calc!="untreated")
+
+metareg5 <- rma.mv(Mean_change_pa_perc, Variance_pa_perc,
+                   data=PD_progression_metaan_onlytreated,
+                   random = ~1 | File_identifier,
+                   mods = ~ ON_OFF_calc,
+                   method="REML") #quid "redundant predictors dropped from the model" ? I only put in one? 
+metareg5
+
+#Moderator = Disease duration
+metareg6 <- rma.mv(Mean_change_pa_perc, Variance_pa_perc,
+                   data=PD_progression_metaan,
+                   random = ~1 | File_identifier,
+                   mods = ~ Baseline_disdur_yrs,
+                   method="REML")
+metareg6
+ 
+#Moderator = Bias casp
+metareg7 <- rma.mv(Mean_change_pa_perc, Variance_pa_perc,
+                   data=PD_progression_metaan,
+                   random = ~1 | File_identifier,
+                   mods = ~ Bias_CASP,
+                   method="REML")
+metareg7
+
+#Moderator = Age
+metareg8 <- rma.mv(Mean_change_pa_perc, Variance_pa_perc,
+                   data=PD_progression_metaan,
+                   random = ~1 | File_identifier,
+                   mods = ~ Baseline_age_yrs,
+                   method="REML")
+metareg8
+
+```
+```{r ggplots metaregression}
+
+#Baseline_age_yrs
+g1<- ggplot(data=PD_progression_metaan,aes(x=Mean_change_pa_perc,y=Baseline_age_yrs)) + geom_point() +
+  geom_smooth(method='lm', formula=y~x) + geom_text(x=4, y=60, label="p = 0.10, R-squared = 0.04") + ggtitle("Baseline_age_yrs") + theme(
+plot.title = element_text(size=16, face="bold.italic"))
+cor.test(PD_progression_metaan$Mean_change_pa_perc, PD_progression_metaan$Baseline_age_yrs, use = "complete.obs") 
+
+#Study_dur_yrs
+g2 <- ggplot(data=PD_progression_metaan,aes(x=Mean_change_pa_perc,y=Study_dur_yrs)) + geom_point() +
+  geom_smooth(method='lm', formula=y~x) + geom_text(x=5.5, y=8, label="p = 0.047, R-squared = 0.06")+ ggtitle("Study_dur_yrs") + theme(
+plot.title = element_text(size=16, face="bold.italic"))
+cor.test(PD_progression_metaan$Mean_change_pa_perc, PD_progression_metaan$Study_dur_yrs, use = "complete.obs")
+
+
+#Baseline_disdur_yrs
+g3 <- ggplot(data=PD_progression_metaan,aes(x=Mean_change_pa_perc,y=Baseline_disdur_yrs)) + geom_point() +
+  geom_smooth(method='lm', formula=y~x) + geom_text(x=4, y=3.5, label="p = 0.90, R-squared = 0")+ ggtitle("Baseline_disdur_yrs") + theme(
+plot.title = element_text(size=16, face="bold.italic"))
+cor.test(PD_progression_metaan$Mean_change_pa_perc, PD_progression_metaan$Baseline_disdur_yrs, use = "complete.obs")
+
+#Baseline_N_pts_NON_intervention
+g4<- ggplot(data=PD_progression_metaan,aes(x=Mean_change_pa_perc,y=Baseline_N_pts_NON_intervention)) + geom_point() +
+  geom_smooth(method='lm', formula=y~x) + geom_text(x=4, y=350, label="p = 0.30, R-squared = 0.02")+ ggtitle("Baseline_N_pts_NON_intervention") + theme(
+plot.title = element_text(size=16, face="bold.italic"))
+cor.test(PD_progression_metaan$Mean_change_pa_perc, PD_progression_metaan$Baseline_N_pts_NON_intervention, use = "complete.obs")
+
+#Scale_Number
+PD_progression_metaan$scale_no <- as.numeric(levels(PD_progression_metaan$Scale_number))[PD_progression_metaan$Scale_number]
+g5 <-ggplot(data=PD_progression_metaan,aes(x=Mean_change_pa_perc,y=scale_no)) + geom_point() +
+  geom_smooth(method='lm', formula=y~x) + geom_text(x=1, y=118, label="p = 0.24, R-squared = 0.02")+ ggtitle("Scale_number") + theme(
+plot.title = element_text(size=16, face="bold.italic"))
+cor.test(PD_progression_metaan$Mean_change_pa_perc, PD_progression_metaan$scale_no, use = "complete.obs")
+
+grid.arrange(g1, g2, g3, g4, g5, ncol=2, nrow =3)
+
+```
